@@ -28,6 +28,10 @@ class NetworkConfig {
     this.enableWebRtc = true,
     String? nodeId,
     this.delegatedRoutingEndpoint,
+    this.privateNetworkPsk,
+    this.swarmKeyPath,
+    this.forcePrivateNetwork = false,
+    this.allowPublicBootstrapWithPrivateNetwork = false,
   }) : nodeId = nodeId ?? _generateDefaultNodeId();
 
   /// Creates a network configuration with the given options and a generated Peer ID.
@@ -69,7 +73,21 @@ class NetworkConfig {
       enableWebRtc: json['enableWebRtc'] as bool? ?? true,
       nodeId: json['nodeId'] as String?,
       delegatedRoutingEndpoint: json['delegatedRoutingEndpoint'] as String?,
+      privateNetworkPsk: _pskFromJson(json['privateNetworkPsk']),
+      swarmKeyPath: json['swarmKeyPath'] as String?,
+      forcePrivateNetwork: json['forcePrivateNetwork'] as bool? ?? false,
+      allowPublicBootstrapWithPrivateNetwork:
+          json['allowPublicBootstrapWithPrivateNetwork'] as bool? ?? false,
     );
+  }
+
+  static Uint8List? _pskFromJson(dynamic value) {
+    if (value == null) return null;
+    if (value is Uint8List) return value;
+    if (value is List) {
+      return Uint8List.fromList(value.cast<int>());
+    }
+    return null;
   }
 
   /// Default multiaddr listen addresses for TCP.
@@ -117,6 +135,18 @@ class NetworkConfig {
   /// Optional HTTP endpoint for delegated routing.
   final String? delegatedRoutingEndpoint;
 
+  /// Inline 32-byte private network PSK (overrides file when set).
+  final Uint8List? privateNetworkPsk;
+
+  /// Path to `swarm.key`; default `{dataPath}/swarm.key`.
+  final String? swarmKeyPath;
+
+  /// Require PSK at startup (`LIBP2P_FORCE_PNET` equivalent).
+  final bool forcePrivateNetwork;
+
+  /// When false (default), public bootstrap peers are removed if PSK is set.
+  final bool allowPublicBootstrapWithPrivateNetwork;
+
   /// Converts the network configuration to a JSON map.
   Map<String, dynamic> toJson() => {
     'listenAddresses': listenAddresses,
@@ -129,6 +159,11 @@ class NetworkConfig {
     'enableWebRtc': enableWebRtc,
     'nodeId': nodeId,
     'delegatedRoutingEndpoint': delegatedRoutingEndpoint,
+    if (privateNetworkPsk != null) 'privateNetworkPsk': privateNetworkPsk!.toList(),
+    'swarmKeyPath': swarmKeyPath,
+    'forcePrivateNetwork': forcePrivateNetwork,
+    'allowPublicBootstrapWithPrivateNetwork':
+        allowPublicBootstrapWithPrivateNetwork,
   };
 
   static String _generateDefaultNodeId() {

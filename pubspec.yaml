@@ -49,6 +49,8 @@ dependencies:
   synchronized: ^3.4.0
   multicast_dns: ^0.3.3
   ipfs_libp2p: ^0.5.6
+  dart_libp2p_pnet:
+    path: ../dart_libp2p_pnet
 
   jose: ^0.3.5
   mime: ^2.0.0
@@ -92,3 +94,5 @@ macos:
 dependency_overrides:
   xml: ^7.0.1
   dart_udx: ^2.0.3
+  dart_libp2p_pnet:
+    path: ../dart_libp2p_pnet

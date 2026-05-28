@@ -3,6 +3,8 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:dart_ipfs/src/core/config/ipfs_config.dart';
+import 'package:dart_ipfs/src/network/private_network.dart';
+import 'package:dart_ipfs/src/transport/pnet_tcp_transport.dart';
 import 'package:dart_ipfs/src/transport/router_interface.dart';
 import 'package:dart_ipfs/src/transport/webrtc/signaling_protocol.dart';
 import 'package:dart_ipfs/src/transport/webrtc/webrtc_direct_transport.dart';
@@ -45,6 +47,8 @@ class Libp2pRouter implements RouterInterface {
   libp2p.KeyPair? _keyPair;
   bool _hasStarted = false;
   bool _isInitialized = false;
+  ResolvedPrivateNetwork? _privateNetwork;
+  List<String> _bootstrapPeers = [];
 
   final Set<String> _connectedPeers = {};
   final Set<String> _registeredProtocols = {};
@@ -139,6 +143,24 @@ class Libp2pRouter implements RouterInterface {
     _logger.debug('Starting Libp2pRouter...');
 
     try {
+      _privateNetwork = await resolvePrivateNetwork(_config);
+      if (_privateNetwork != null) {
+        _logger.info(
+          'Swarm is limited to private network of peers with the swarm key',
+        );
+        _logger.info(
+          'Swarm key fingerprint: ${_privateNetwork!.fingerprint}',
+        );
+      }
+
+      _bootstrapPeers = applyPrivateBootstrapPolicy(
+        bootstrapPeers: _config.network.bootstrapPeers,
+        privateNetworkEnabled: _privateNetwork != null,
+        allowPublicBootstrapWithPrivateNetwork:
+            _config.network.allowPublicBootstrapWithPrivateNetwork,
+        onWarning: _logger.warning,
+      );
+
       // Determine listen address from config
       int port = 4001; // Default IPFS port
       for (final addr in _config.network.listenAddresses) {
@@ -157,8 +179,13 @@ class Libp2pRouter implements RouterInterface {
       final webrtcDirectTransport = WebRTCDirectTransport();
       final webTransportTransport = WebTransportTransport();
 
+      final tcpTransport = TCPTransport(resourceManager: resourceManager);
+      final pnetTcp = _privateNetwork != null
+          ? PnetTcpTransport.wrap(tcpTransport, _privateNetwork!.psk)
+          : tcpTransport;
+
       _host = await config.Libp2p.new_([
-        config.Libp2p.transport(TCPTransport(resourceManager: resourceManager)),
+        config.Libp2p.transport(pnetTcp),
         if (_config.network.enableWebTransport)
           config.Libp2p.transport(webTransportTransport),
         if (_config.network.enableWebRtc) ...[
@@ -221,7 +248,7 @@ class Libp2pRouter implements RouterInterface {
   }
 
   Future<void> _connectToBootstrapPeers() async {
-    for (final peer in _config.network.bootstrapPeers) {
+    for (final peer in _bootstrapPeers) {
       try {
         await connect(peer);
       } catch (e) {
