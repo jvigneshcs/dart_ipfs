@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dart_ipfs/src/transport/router_interface.dart';
-import 'package:ipfs_libp2p/dart_libp2p.dart' as libp2p;
+import 'package:dart_libp2p/dart_libp2p.dart' as libp2p;
 
 /// The type of a signaling message.
 enum SignalingMessageType {

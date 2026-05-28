@@ -1,6 +1,6 @@
 // lib/src/transport/webtransport/webtransport_dialer_io.dart
 import 'dart:async';
-import 'package:ipfs_libp2p/dart_libp2p.dart' as libp2p;
+import 'package:dart_libp2p/dart_libp2p.dart' as libp2p;
 import 'webtransport_dialer.dart';
 
 /// Factory for IO-specific dialer.

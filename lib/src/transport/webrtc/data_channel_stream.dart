@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:typed_data';
-import 'package:ipfs_libp2p/dart_libp2p.dart' as libp2p;
+import 'package:dart_libp2p/dart_libp2p.dart' as libp2p;
 
 /// Base class for WebRTC DataChannel-backed streams.
 abstract class DataChannelStream implements libp2p.P2PStream<Uint8List> {

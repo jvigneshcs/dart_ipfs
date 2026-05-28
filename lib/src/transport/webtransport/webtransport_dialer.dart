@@ -1,4 +1,4 @@
-import 'package:ipfs_libp2p/dart_libp2p.dart' as libp2p;
+import 'package:dart_libp2p/dart_libp2p.dart' as libp2p;
 import 'webtransport_dialer_stub.dart'
     if (dart.library.js_interop) 'webtransport_dialer_web.dart'
     if (dart.library.io) 'webtransport_dialer_io.dart';

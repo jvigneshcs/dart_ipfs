@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:js_interop';
 import 'dart:typed_data';
 
-import 'package:ipfs_libp2p/dart_libp2p.dart' as libp2p;
+import 'package:dart_libp2p/dart_libp2p.dart' as libp2p;
 import 'package:web/web.dart' as web;
 
 import 'multiaddr_parser.dart';

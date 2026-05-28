@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:ipfs_libp2p/dart_libp2p.dart' as libp2p;
-import 'package:ipfs_libp2p/p2p/transport/listener.dart' as libp2p_listener;
+import 'package:dart_libp2p/dart_libp2p.dart' as libp2p;
+import 'package:dart_libp2p/p2p/transport/listener.dart' as libp2p_listener;
 
 /// WebTransport listener implementation (stub for now, as browsers only dial).
 class WebTransportListener implements libp2p_listener.Listener {

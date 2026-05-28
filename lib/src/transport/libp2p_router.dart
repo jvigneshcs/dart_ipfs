@@ -4,19 +4,18 @@ import 'dart:typed_data';
 
 import 'package:dart_ipfs/src/core/config/ipfs_config.dart';
 import 'package:dart_ipfs/src/network/private_network.dart';
-import 'package:dart_ipfs/src/transport/pnet_tcp_transport.dart';
 import 'package:dart_ipfs/src/transport/router_interface.dart';
 import 'package:dart_ipfs/src/transport/webrtc/signaling_protocol.dart';
 import 'package:dart_ipfs/src/transport/webrtc/webrtc_direct_transport.dart';
 import 'package:dart_ipfs/src/transport/webrtc/webrtc_transport.dart';
 import 'package:dart_ipfs/src/transport/webtransport/webtransport_transport.dart';
 import 'package:dart_ipfs/src/utils/logger.dart';
-import 'package:ipfs_libp2p/config/config.dart' as config;
-import 'package:ipfs_libp2p/core/crypto/ed25519.dart' as crypto;
-import 'package:ipfs_libp2p/dart_libp2p.dart' as libp2p;
-import 'package:ipfs_libp2p/p2p/host/resource_manager/limiter.dart';
-import 'package:ipfs_libp2p/p2p/host/resource_manager/resource_manager_impl.dart';
-import 'package:ipfs_libp2p/p2p/transport/tcp_transport.dart';
+import 'package:dart_libp2p/config/config.dart' as config;
+import 'package:dart_libp2p/core/crypto/ed25519.dart' as crypto;
+import 'package:dart_libp2p/dart_libp2p.dart' as libp2p;
+import 'package:dart_libp2p/p2p/host/resource_manager/limiter.dart';
+import 'package:dart_libp2p/p2p/host/resource_manager/resource_manager_impl.dart';
+import 'package:dart_libp2p/p2p/transport/tcp_transport.dart';
 
 /// Native libp2p router implementation.
 ///
@@ -180,12 +179,14 @@ class Libp2pRouter implements RouterInterface {
       final webTransportTransport = WebTransportTransport();
 
       final tcpTransport = TCPTransport(resourceManager: resourceManager);
-      final pnetTcp = _privateNetwork != null
-          ? PnetTcpTransport.wrap(tcpTransport, _privateNetwork!.psk)
-          : tcpTransport;
 
       _host = await config.Libp2p.new_([
-        config.Libp2p.transport(pnetTcp),
+        config.Libp2p.transport(tcpTransport),
+        if (_privateNetwork != null)
+          config.Libp2p.privateNetworkPsk(
+            _privateNetwork!.psk,
+            forcePrivateNetwork: _config.network.forcePrivateNetwork,
+          ),
         if (_config.network.enableWebTransport)
           config.Libp2p.transport(webTransportTransport),
         if (_config.network.enableWebRtc) ...[

@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Migrated from `ipfs_libp2p` to `dart_libp2p` with native Swarm PNET (`Libp2p.privateNetworkPsk`).
+- Removed interim `PnetTcpTransport` bridge.
+
 ## [1.11.4] - 2026-05-15
 
 ### Fixed

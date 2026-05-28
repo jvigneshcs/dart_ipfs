@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:ipfs_libp2p/dart_libp2p.dart' as libp2p;
-import 'package:ipfs_libp2p/p2p/transport/listener.dart' as libp2p_listener;
-import 'package:ipfs_libp2p/p2p/transport/transport.dart' as libp2p_trans;
-import 'package:ipfs_libp2p/p2p/transport/transport_config.dart'
+import 'package:dart_libp2p/dart_libp2p.dart' as libp2p;
+import 'package:dart_libp2p/p2p/transport/listener.dart' as libp2p_listener;
+import 'package:dart_libp2p/p2p/transport/transport.dart' as libp2p_trans;
+import 'package:dart_libp2p/p2p/transport/transport_config.dart'
     as libp2p_config;
 
 import 'data_channel_stream.dart';
