@@ -10,11 +10,17 @@ import 'helpers/kubo_interop_env.dart';
 import 'helpers/kubo_ipfs_connect.dart';
 import 'helpers/kubo_process_manager.dart';
 
-/// Scenario 2: dart_ipfs ↔ Kubo same PSK — peer visible in swarm.
+String _wrongSwarmKeyFile() => '''
+/key/swarm/psk/1.0.0/
+/base16/
+0000000000000000000000000000000000000000000000000000000000000001
+''';
+
+/// Scenario 5: mismatched swarm.key — peers do not connect.
 void main() {
   final env = KuboInteropEnv.tryLoad();
 
-  group('dart_ipfs Kubo swarm', () {
+  group('dart_ipfs Kubo PSK mismatch', () {
     KuboProcessManager? kubo;
     Directory? dartRepo;
 
@@ -26,7 +32,7 @@ void main() {
     });
 
     test(
-      'private dart_ipfs peer appears in Kubo swarm peers',
+      'wrong dart swarm.key does not join Kubo private swarm',
       () async {
         kubo = await KuboProcessManager.createPrivate(
           ipfsBin: env!.ipfsBin,
@@ -35,8 +41,7 @@ void main() {
         await kubo!.startDaemon();
 
         dartRepo = await Directory.systemTemp.createTemp('dart_ipfs_pnet_');
-        await File('${dartRepo!.path}/swarm.key')
-            .writeAsString(testSwarmKeyFileContents());
+        await File('${dartRepo!.path}/swarm.key').writeAsString(_wrongSwarmKeyFile());
 
         final node = await startPrivateIpfsNode(
           dataPath: dartRepo!.path,
@@ -44,13 +49,13 @@ void main() {
         );
 
         try {
-          await connectKuboAndDart(kubo!, node);
+          try {
+            await connectKuboAndDart(kubo!, node, timeout: const Duration(seconds: 20));
+          } catch (_) {
+            // Expected
+          }
           final peers = await kubo!.swarmPeers();
-          expect(
-            peers.any((p) => p.contains(node.peerID)),
-            isTrue,
-            reason: 'Kubo swarm peers: $peers',
-          );
+          expect(peers.any((p) => p.contains(node.peerID)), isFalse);
         } finally {
           await node.stop();
         }

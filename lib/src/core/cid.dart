@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:dart_ipfs/src/proto/generated/core/cid.pb.dart';
 import 'package:dart_ipfs/src/utils/encoding.dart';
+import 'package:dart_ipfs/src/utils/ipfs_base32.dart';
 import 'package:dart_multihash/dart_multihash.dart';
 import 'package:multibase/multibase.dart';
 
@@ -171,7 +172,14 @@ class CID {
       return fromBytes(decoded);
     }
 
-    // CIDv1: multibase encoded
+    // CIDv1: IPFS base32 multibase (`b` + RFC4648), Kubo-compatible
+    if (cidStr.startsWith('b') ||
+        cidStr.startsWith('B') ||
+        cidStr.startsWith(ipfsBase32MultibaseCode)) {
+      return fromBytes(ipfsBase32Decode(cidStr));
+    }
+
+    // Fallback for other multibase prefixes (e.g. base58btc `z`)
     final decoded = multibaseDecode(cidStr);
     return fromBytes(decoded);
   }
@@ -186,10 +194,8 @@ class CID {
       return encoded.substring(1);
     }
 
-    // CIDv1: <version><codec><multihash>
-    final bytes = toBytes();
-    final baseType = multibaseType ?? Multibase.base32;
-    return multibaseEncode(baseType, bytes);
+    // CIDv1: Kubo/IPFS base32 (`bafk…`), not BaseX `bbk…`
+    return ipfsBase32Encode(toBytes());
   }
 
   /// Converts the CID to its binary representation.

@@ -56,6 +56,8 @@ class ContentManager implements ILifecycle {
     try {
       final block = await Block.fromData(data);
       await _datastoreHandler.putBlock(block);
+      await _blockStore?.putBlock(block);
+      await _bitswapHandler?.announceHave(block.cid.toString());
       _newContentController.add(block.cid.toString());
       _logger.info('Added file with CID: ${block.cid}');
       return block.cid.toString();
@@ -122,6 +124,8 @@ class ContentManager implements ILifecycle {
       );
 
       await _datastoreHandler.putBlock(block);
+      await _blockStore?.putBlock(block);
+      await _bitswapHandler?.announceHave(block.cid.toString());
       _logger.info('Added directory with CID: ${block.cid}');
       return block.cid.toString();
     } catch (e, stackTrace) {

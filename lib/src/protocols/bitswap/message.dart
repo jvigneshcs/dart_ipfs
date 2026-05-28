@@ -33,6 +33,9 @@ class Message {
   /// Transient field: Pending bytes (Bitswap 1.2)
   int pendingBytes = 0;
 
+  /// When true, the wantlist replaces the peer's previous wantlist.
+  bool wantlistFull = false;
+
   /// Adds a block to the message payload.
   void addBlock(Block block) {
     _blocks.add(block);
@@ -175,7 +178,7 @@ class Message {
     // Add wantlist entries
     if (_wantlist.entries.isNotEmpty) {
       final pbWantlist = pb.Message_Wantlist();
-      pbWantlist.full = false;
+      pbWantlist.full = wantlistFull;
 
       for (var entry in _wantlist.entries.values) {
         final pbEntry = pb.Message_Wantlist_Entry();

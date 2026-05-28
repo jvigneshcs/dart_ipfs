@@ -446,8 +446,15 @@ class Libp2pRouter implements RouterInterface {
         );
 
         try {
-          final data = await _readLengthPrefixedMessage(stream);
-          if (data != null) {
+          while (true) {
+            final data = await _readLengthPrefixedMessage(stream);
+            if (data == null) {
+              _logger.verbose(
+                'Stream EOF/closed from $remoteIdStr for protocol $protocolId',
+              );
+              break;
+            }
+
             final packet = NetworkPacket(
               srcPeerId: remoteIdStr,
               datagram: data,
@@ -462,12 +469,8 @@ class Libp2pRouter implements RouterInterface {
                 }
               },
             );
-            handler(packet);
+            await _invokeProtocolHandler(handler, packet);
             _messagePacketController.add(packet);
-          } else {
-            _logger.warning(
-              'Received empty or invalid message from $remoteIdStr on $protocolId',
-            );
           }
         } catch (e, stackTrace) {
           _logger.error(
@@ -550,6 +553,14 @@ class Libp2pRouter implements RouterInterface {
   }
 
   // Helper methods
+
+  /// Invokes a protocol handler, awaiting it when the handler is `async`.
+  Future<void> _invokeProtocolHandler(
+    void Function(NetworkPacket) handler,
+    NetworkPacket packet,
+  ) async {
+    await (handler as FutureOr<void> Function(NetworkPacket))(packet);
+  }
 
   void _checkStarted() {
     if (!_hasStarted) {

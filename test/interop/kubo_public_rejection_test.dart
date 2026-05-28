@@ -10,11 +10,11 @@ import 'helpers/kubo_interop_env.dart';
 import 'helpers/kubo_ipfs_connect.dart';
 import 'helpers/kubo_process_manager.dart';
 
-/// Scenario 2: dart_ipfs ↔ Kubo same PSK — peer visible in swarm.
+/// Scenario 6: dart_ipfs with PSK does not join public Kubo swarm.
 void main() {
   final env = KuboInteropEnv.tryLoad();
 
-  group('dart_ipfs Kubo swarm', () {
+  group('dart_ipfs public Kubo rejection', () {
     KuboProcessManager? kubo;
     Directory? dartRepo;
 
@@ -26,12 +26,9 @@ void main() {
     });
 
     test(
-      'private dart_ipfs peer appears in Kubo swarm peers',
+      'private dart_ipfs does not appear in public Kubo swarm',
       () async {
-        kubo = await KuboProcessManager.createPrivate(
-          ipfsBin: env!.ipfsBin,
-          swarmKeyContents: testSwarmKeyFileContents(),
-        );
+        kubo = await KuboProcessManager.createPublic(ipfsBin: env!.ipfsBin);
         await kubo!.startDaemon();
 
         dartRepo = await Directory.systemTemp.createTemp('dart_ipfs_pnet_');
@@ -44,12 +41,17 @@ void main() {
         );
 
         try {
-          await connectKuboAndDart(kubo!, node);
+          // Attempt connection — should not establish a stable peer entry
+          try {
+            await connectKuboAndDart(kubo!, node, timeout: const Duration(seconds: 20));
+          } catch (_) {
+            // Expected
+          }
           final peers = await kubo!.swarmPeers();
           expect(
             peers.any((p) => p.contains(node.peerID)),
-            isTrue,
-            reason: 'Kubo swarm peers: $peers',
+            isFalse,
+            reason: 'Public Kubo should not list private dart peer: $peers',
           );
         } finally {
           await node.stop();

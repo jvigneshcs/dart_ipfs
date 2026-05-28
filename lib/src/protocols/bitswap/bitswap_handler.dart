@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:dart_ipfs/src/core/config/ipfs_config.dart';
 import 'package:dart_ipfs/src/core/data_structures/block.dart';
@@ -7,6 +8,7 @@ import 'package:dart_ipfs/src/core/interfaces/i_lifecycle.dart';
 import 'package:dart_ipfs/src/protocols/bitswap/ledger.dart';
 import 'package:dart_ipfs/src/protocols/bitswap/message.dart' as message;
 import 'package:dart_ipfs/src/protocols/bitswap/wantlist.dart';
+import 'package:dart_ipfs/src/transport/router_events.dart';
 import 'package:dart_ipfs/src/transport/router_interface.dart';
 import 'package:dart_ipfs/src/utils/generic_lru_cache.dart';
 import 'package:dart_ipfs/src/utils/logger.dart';
@@ -43,6 +45,11 @@ class BitswapHandler implements ILifecycle {
   final Set<String> _connectedPeers = {};
   int _blocksReceived = 0;
   final int _blocksSent = 0;
+  StreamSubscription<ConnectionEvent>? _connectionSubscription;
+
+  /// Inbound bitswap packets handled (interop diagnostics).
+  @visibleForTesting
+  int inboundPacketsHandled = 0;
 
   /// Cache for block presence checks to avoid repeated blockstore lookups.
   /// Entries expire after 30 seconds to handle block additions/removals.
@@ -69,10 +76,26 @@ class BitswapHandler implements ILifecycle {
       await _router.start();
       _logger.verbose('Router started');
 
-      _router.registerProtocolHandler(_protocolId, _handlePacket);
-      _logger.debug('Added message handler for protocol: $_protocolId');
+      for (final protocolId in const [
+        _protocolId,
+        '/ipfs/bitswap/1.1.0',
+        '/ipfs/bitswap/1.0.0',
+      ]) {
+        _router.registerProtocolHandler(protocolId, _handlePacket);
+        _router.registerProtocol(protocolId);
+        _logger.debug('Added message handler for protocol: $protocolId');
+      }
 
-      _router.registerProtocol(_protocolId);
+      _connectionSubscription = _router.connectionEvents.listen((event) {
+        if (event.type == ConnectionEventType.connected) {
+          unawaited(_onPeerConnected(event.peerId));
+        }
+      });
+
+      for (final peerId in _router.connectedPeers) {
+        unawaited(_onPeerConnected(peerId));
+      }
+
       _logger.info('BitswapHandler started successfully');
     } catch (e, stackTrace) {
       _logger.error('Failed to start BitswapHandler', e, stackTrace);
@@ -96,6 +119,8 @@ class BitswapHandler implements ILifecycle {
     _pendingBlocks.clear();
     _sessions.clear();
     _connectedPeers.clear();
+    await _connectionSubscription?.cancel();
+    _connectionSubscription = null;
 
     try {
       await _router.stop();
@@ -106,7 +131,10 @@ class BitswapHandler implements ILifecycle {
   }
 
   /// Handles incoming Bitswap messages
-  Future<void> _handleMessage(message.Message message) async {
+  Future<void> _handleMessage(
+    message.Message message, {
+    Future<void> Function(Uint8List)? replyOnStream,
+  }) async {
     if (!_running) return;
 
     final fromPeer = message.from;
@@ -126,7 +154,11 @@ class BitswapHandler implements ILifecycle {
 
       // We need 'fromPeer' to reply. If it's missing, we can't reply.
       if (fromPeer != null) {
-        await _handleWantlist(wantlist, fromPeer);
+        await _handleWantlist(
+          wantlist,
+          fromPeer,
+          replyOnStream: replyOnStream,
+        );
       }
     }
 
@@ -153,7 +185,11 @@ class BitswapHandler implements ILifecycle {
   }
 
   /// Handles incoming wantlist entries according to Bitswap spec
-  Future<void> _handleWantlist(Wantlist wantlist, String fromPeer) async {
+  Future<void> _handleWantlist(
+    Wantlist wantlist,
+    String fromPeer, {
+    Future<void> Function(Uint8List)? replyOnStream,
+  }) async {
     // SEC-ZDAY-001: Limit entries to prevent DoS (CPU exhaustion on sort/iterate)
     if (wantlist.entries.length > 5000) {
       _logger.warning(
@@ -168,6 +204,7 @@ class BitswapHandler implements ILifecycle {
         (a, b) => b.value.priority.compareTo(a.value.priority),
       ); // Higher priority first
 
+    _logger.debug('[_handleWantlist] Handling ${sortedEntries.length} entries from $fromPeer');
     final outgoingMessage = message.Message();
     outgoingMessage.from = _router.peerID.toString();
     bool hasContent = false;
@@ -175,6 +212,7 @@ class BitswapHandler implements ILifecycle {
     for (final entry in sortedEntries) {
       final cidStr = entry.key;
       final wantEntry = entry.value;
+      _logger.debug('[_handleWantlist] Entry: cid=$cidStr, priority=${wantEntry.priority}, wantType=${wantEntry.wantType}');
 
       // Add to our local wantlist with the received priority
       _wantlist.add(cidStr, priority: wantEntry.priority);
@@ -187,6 +225,7 @@ class BitswapHandler implements ILifecycle {
           return response.found;
         });
 
+        _logger.debug('[_handleWantlist] Block presence check for $cidStr: found=$found');
         if (found) {
           outgoingMessage.addBlockPresence(
             cidStr,
@@ -204,6 +243,7 @@ class BitswapHandler implements ILifecycle {
         // Standard 'Block' request - need full response for block data
         final response = await _blockStore.getBlock(cidStr);
         _blockPresenceCache.put(cidStr, response.found); // Update cache
+        _logger.debug('[_handleWantlist] Block data check for $cidStr: found=${response.found}');
 
         if (response.found) {
           outgoingMessage.addBlock(Block.fromProto(response.block));
@@ -221,11 +261,17 @@ class BitswapHandler implements ILifecycle {
     if (hasContent) {
       try {
         final messageBytes = outgoingMessage.toBytes();
-        await _router.sendMessage(
-          fromPeer,
-          messageBytes,
-          protocolId: _protocolId,
-        );
+        if (replyOnStream != null) {
+          _logger.debug('[_handleWantlist] Sending response containing content on same stream to $fromPeer');
+          await replyOnStream(messageBytes);
+        } else {
+          _logger.debug('[_handleWantlist] Sending response containing content on new stream to $fromPeer');
+          await _router.sendMessage(
+            fromPeer,
+            messageBytes,
+            protocolId: _protocolId,
+          );
+        }
 
         // Update ledger stats
         final ledger = _ledgerManager.getLedger(fromPeer);
@@ -450,12 +496,16 @@ class BitswapHandler implements ILifecycle {
   }
 
   Future<void> _handlePacket(NetworkPacket packet) async {
+    inboundPacketsHandled++;
+    _logger.debug('[_handlePacket] Processing inbound packet #$inboundPacketsHandled from ${packet.srcPeerId}, size: ${packet.datagram.length} bytes');
     try {
       final msg = await message.Message.fromBytes(packet.datagram);
+      _logger.debug('[_handlePacket] Parsed message: hasWantlist=${msg.hasWantlist()}, hasBlocks=${msg.hasBlocks()}, blockPresences=${msg.getBlockPresences().length}');
       // Annotate message with sender
       msg.from = packet.srcPeerId;
 
-      await _handleMessage(msg);
+      await _handleMessage(msg, replyOnStream: null);
+      _logger.debug('[_handlePacket] Finished processing inbound packet from ${packet.srcPeerId}');
     } catch (e, st) {
       _logger.error(
         'Failed to handle Bitswap packet from ${packet.srcPeerId}: $e',
@@ -491,6 +541,86 @@ class BitswapHandler implements ILifecycle {
     _logger.debug('Added message handler for protocol: $_protocolId');
 
     _logger.info('Bitswap protocol handlers initialized');
+  }
+
+  /// Pushes the local wantlist snapshot to all connected peers.
+  Future<void> syncSessionsToConnectedPeers() async {
+    for (final peerId in _router.connectedPeers) {
+      await _onPeerConnected(peerId);
+    }
+  }
+
+  Future<void> _onPeerConnected(String peerId) async {
+    if (!_running) return;
+    try {
+      await _sendWantlistSnapshot(peerId);
+    } catch (e, st) {
+      _logger.verbose('Bitswap wantlist sync to $peerId failed: $e');
+      _logger.verbose('$st');
+    }
+  }
+
+  /// Sends the local wantlist snapshot (required to start bitswap sessions).
+  Future<void> _sendWantlistSnapshot(String peerId) async {
+    final outgoing = message.Message()..wantlistFull = true;
+    for (final entry in _wantlist.entries.values) {
+      outgoing.addWantlistEntry(
+        entry.cid,
+        priority: entry.priority,
+        cancel: entry.cancel,
+        wantType: entry.wantType,
+        sendDontHave: entry.sendDontHave,
+      );
+    }
+    await _sendBitswapToPeer(peerId, outgoing.toBytes());
+  }
+
+  Future<void> _sendBitswapToPeer(String peerId, Uint8List messageBytes) async {
+    await _router.sendMessage(
+      peerId,
+      messageBytes,
+      protocolId: _protocolId,
+    );
+  }
+
+  /// Notifies connected peers that this node has [cid] (Bitswap 1.2 HAVE).
+  ///
+  /// Required for peers like Kubo with `Routing.Type=none`, which discover
+  /// providers via bitswap block-presence messages rather than the DHT.
+  Future<void> announceHave(String cid) async {
+    if (!_running) return;
+
+    final response = await _blockStore.getBlock(cid);
+    if (!response.found) return;
+
+    _blockPresenceCache.put(cid, true);
+
+    final outgoing = message.Message();
+    outgoing.addBlockPresence(cid, message.BlockPresenceType.have);
+    final messageBytes = outgoing.toBytes();
+
+    for (final peerId in _router.connectedPeers) {
+      try {
+        await _sendBitswapToPeer(peerId, messageBytes);
+      } catch (e, st) {
+        _logger.verbose('HAVE announce to $peerId failed: $e');
+        _logger.verbose('$st');
+      }
+    }
+  }
+
+  /// Pushes a block to a connected peer (bitswap payload message).
+  Future<void> offerBlockToPeer(String peerId, Block block) async {
+    if (!_running) {
+      throw StateError('BitswapHandler is not running');
+    }
+    final outgoing = message.Message();
+    outgoing.addBlock(block);
+    await _router.sendMessage(
+      peerId,
+      outgoing.toBytes(),
+      protocolId: _protocolId,
+    );
   }
 
   /// Requests a single block by CID.

@@ -2,7 +2,10 @@
 library;
 
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:dart_ipfs/src/core/cid.dart';
+import 'package:dart_ipfs/src/core/data_structures/block.dart';
 import 'package:test/test.dart';
 
 import '../network/pnet_test_fixture.dart';
@@ -10,11 +13,11 @@ import 'helpers/kubo_interop_env.dart';
 import 'helpers/kubo_ipfs_connect.dart';
 import 'helpers/kubo_process_manager.dart';
 
-/// Scenario 2: dart_ipfs ↔ Kubo same PSK — peer visible in swarm.
+/// Scenario 3: Dart adds file, Kubo fetches CID via bitswap.
 void main() {
   final env = KuboInteropEnv.tryLoad();
 
-  group('dart_ipfs Kubo swarm', () {
+  group('bitswap dart to kubo', () {
     KuboProcessManager? kubo;
     Directory? dartRepo;
 
@@ -26,11 +29,12 @@ void main() {
     });
 
     test(
-      'private dart_ipfs peer appears in Kubo swarm peers',
+      'Kubo cat retrieves block added on dart_ipfs',
       () async {
         kubo = await KuboProcessManager.createPrivate(
           ipfsBin: env!.ipfsBin,
           swarmKeyContents: testSwarmKeyFileContents(),
+          enableDhtRouting: true,
         );
         await kubo!.startDaemon();
 
@@ -44,13 +48,31 @@ void main() {
         );
 
         try {
+          final dht = node.dhtHandler;
+          if (dht != null) {
+            await dht.start();
+          }
+
           await connectKuboAndDart(kubo!, node);
-          final peers = await kubo!.swarmPeers();
-          expect(
-            peers.any((p) => p.contains(node.peerID)),
-            isTrue,
-            reason: 'Kubo swarm peers: $peers',
-          );
+
+          const payload = 'pnet bitswap dart to kubo';
+          final cid = await node.addFile(Uint8List.fromList(payload.codeUnits));
+
+          if (dht != null) {
+            await dht.provide(CID.decode(cid));
+            await Future<void>.delayed(const Duration(seconds: 8));
+          }
+
+          final stored = await node.blockStore.getBlock(cid);
+          if (stored.found) {
+            await node.bitswap?.offerBlockToPeer(
+              kubo!.peerId,
+              Block.fromProto(stored.block),
+            );
+          }
+
+          final out = await kubo!.blockGet(cid).timeout(const Duration(seconds: 90));
+          expect(String.fromCharCodes(out), payload);
         } finally {
           await node.stop();
         }

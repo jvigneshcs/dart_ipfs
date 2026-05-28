@@ -469,7 +469,11 @@ class DHTClient {
   }
 
   void _sendResponse(String peerIdStr, kad.Message msg) {
-    node.dhtHandler?.router.sendMessage(peerIdStr, msg.writeToBuffer());
+    node.dhtHandler?.router.sendMessage(
+      peerIdStr,
+      msg.writeToBuffer(),
+      protocolId: protocolDht,
+    );
   }
 
   /// Starts the DHT client and initializes necessary components.
