@@ -118,7 +118,12 @@ library;
 
 export 'src/core/cid.dart';
 export 'src/core/config/ipfs_config.dart';
-export 'src/network/private_network.dart';
+export 'src/core/data_structures/link.dart';
 export 'src/core/ipfs_node/ipfs_node.dart';
 export 'src/ipfs.dart';
+export 'src/network/private_network.dart';
+export 'src/protocols/dht/interface_dht_handler.dart';
+export 'src/protocols/ipns/ipns_record.dart';
 export 'src/protocols/pubsub/pubsub_message.dart';
+export 'src/utils/keystore.dart';
+export 'src/utils/logger.dart';

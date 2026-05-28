@@ -1,4 +1,5 @@
 // src/utils/logger.dart
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -28,7 +29,8 @@ import 'package:logging/logging.dart' as logging;
 /// logger.error('Failed to store block', exception, stackTrace);
 /// ```
 ///
-/// Logs are written to both console and `ipfs.log` file (on IO platforms).
+/// Logs are written to both console and a log file (on IO platforms).
+/// Set the file path via [configureLogFile] before starting the node.
 class Logger {
   /// Creates a new logger for the specified component
   Logger(String name, {bool debug = false, bool verbose = false})
@@ -42,13 +44,23 @@ class Logger {
   static bool _structured = false;
   static MetricsCollector? _metrics;
   static IpfsPlatform? _platform;
+  static String? _logFilePath;
   final bool _debug;
   final bool _verbose;
+
+  /// Sets the absolute path for dart_ipfs file logging (IO platforms only).
+  static void configureLogFile(String? path) {
+    _logFilePath = path?.trim().isEmpty == true ? null : path?.trim();
+  }
 
   /// Initializes the global metrics collector for all loggers.
   static void initializeMetrics(IPFSConfig config) {
     _metrics = MetricsCollector(config);
     _structured = config.enableStructuredLogging;
+    final configuredPath = config.customConfig['logFilePath'];
+    if (configuredPath is String && configuredPath.trim().isNotEmpty) {
+      configureLogFile(configuredPath);
+    }
   }
 
   static void _initializeIfNeeded() {
@@ -110,18 +122,13 @@ class Logger {
 
   static void _writeToLogFile(String message) {
     if (_platform == null || !_platform!.isIO) return;
+    if (_logFilePath == null) return;
 
-    try {
-      // Use platform abstraction for file writing
-      _platform!.writeBytes(
-        'ipfs.log',
-        // Append mode not directly supported, so we read + write
-        // For simplicity, just log to console on web
-        _stringToBytes('$message\n'),
-      );
-    } catch (e) {
-      // Silently fail if log file write fails to avoid recursive issues or unwanted output
-    }
+    unawaited(
+      _platform!
+          .writeBytes(_logFilePath!, _stringToBytes('$message\n'))
+          .catchError((_) {}),
+    );
   }
 
   static Uint8List _stringToBytes(String s) {
