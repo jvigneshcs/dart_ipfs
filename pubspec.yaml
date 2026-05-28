@@ -48,11 +48,8 @@ dependencies:
   markdown: ^7.3.0
   synchronized: ^3.4.0
   multicast_dns: ^0.3.3
-  dart_libp2p:
-    path: ../dart_libp2p
-  dart_libp2p_pnet:
-    path: ../dart_libp2p_pnet
-
+  dart_libp2p: ^1.1.0
+  dart_libp2p_pnet: ^0.1.0
   jose: ^0.3.5
   mime: ^2.0.0
   http_parser: ^4.1.2
@@ -95,3 +92,11 @@ macos:
 dependency_overrides:
   xml: ^7.0.1
   dart_udx: ^2.0.3
+  dart_libp2p:
+    git:
+      url: https://github.com/jvigneshcs/dart_libp2p.git
+      ref: main
+  dart_libp2p_pnet:
+    git:
+      url: https://github.com/jvigneshcs/dart_libp2p_pnet.git
+      ref: main
