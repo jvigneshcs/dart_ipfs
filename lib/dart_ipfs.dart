@@ -120,6 +120,7 @@ export 'src/core/cid.dart';
 export 'src/core/config/ipfs_config.dart';
 export 'src/core/data_structures/link.dart';
 export 'src/core/ipfs_node/ipfs_node.dart';
+export 'src/core/ipfs_node/ipfs_web_node.dart';
 export 'src/ipfs.dart';
 export 'src/network/private_network.dart';
 export 'src/protocols/dht/interface_dht_handler.dart';
